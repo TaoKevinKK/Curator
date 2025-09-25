@@ -39,7 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     python-is-python3\
     curl \
-    git && \
+    git \
+    vim && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
@@ -63,14 +64,23 @@ RUN bash install_ffmpeg.sh && \
 
 FROM nemo_curator_dep AS nemo_curator
 
+ARG INTERN_VIDEO_COMMIT=09d872e5093296c6f36b8b3a91fc511b76433bf7
+COPY external/intern_video2_multimodal.patch .
+# Clone InternVideo (Video curation dependency)
+RUN git clone https://github.com/OpenGVLab/InternVideo.git && \
+    cd InternVideo && \
+    git checkout ${INTERN_VIDEO_COMMIT} && \
+    patch -p1 < /opt/intern_video2_multimodal.patch && \
+    rm /opt/intern_video2_multimodal.patch
+
+# Install Curator
 COPY . /opt/Curator
 RUN cd /opt/Curator && \
   uv sync --locked --only-group build && \
-  if [ $CURATOR_ENVIRONMENT = "dev" ]; then \
-      uv sync --link-mode copy --locked --extra all --extra video_nvenc --all-groups; \
-  else \
-      uv sync --link-mode copy --locked --extra all --all-groups; \
-  fi;
+  uv sync --link-mode copy --locked --extra all --all-groups && \
+  uv add /opt/InternVideo/InternVideo2/multi_modality && \
+  uv cache prune && \
+  uv cache clean distance
 
 COPY <<EOF /opt/venv/env.sh
 export UV_PROJECT_ENVIRONMENT=/opt/venv
