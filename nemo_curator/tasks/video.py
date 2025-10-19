@@ -16,8 +16,10 @@ import os
 import pathlib
 import sys
 from dataclasses import dataclass, field
+from tkinter import NO
 from typing import Any
 from uuid import UUID
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -101,6 +103,8 @@ class Clip:
     intern_video_2_text_match: tuple[str, float] | None = None
     # for debugging
     errors: dict[str, str] = field(default_factory=dict)
+    # for video timestamps
+    source_video_timestamps: npt.NDArray[np.float32] | None = None
 
     def extract_metadata(self) -> dict[str, Any] | None:
         """Extract metadata from the clip's buffer.
@@ -227,7 +231,7 @@ class Video:
     extracted frames, motion data, aesthetic scores, and generated captions.
     """
 
-    input_video: pathlib.Path
+    input_video: str
     source_bytes: bytes | None = None
     # video metadata
     metadata: VideoMetadata = field(default_factory=VideoMetadata)
@@ -256,15 +260,15 @@ class Video:
             Exception: Any exception from extract_video_metadata is propagated.
 
         """
-        if self.source_bytes is None:
-            error_msg = "No video data available: source_bytes is None"
+        if not Path(self.input_video).exists() and self.source_bytes is None:
+            error_msg = "No video data available: source_bytes is None and input_video does not exist"
             raise ValueError(error_msg)
 
         # Extract metadata using the existing function
-        extracted_metadata = extract_video_metadata(self.source_bytes)
+        extracted_metadata = extract_video_metadata(self.input_video)
 
         # Set the size from source_bytes
-        self.metadata.size = len(self.source_bytes)
+        self.metadata.size = len(self.source_bytes) if self.source_bytes else 0
 
         # Map the extracted metadata to our metadata object
         self.metadata.height = extracted_metadata.height
@@ -377,3 +381,16 @@ class VideoTask(Task[Video]):
     def num_items(self) -> int:
         """Get the number of items in this task."""
         return 1
+
+@dataclass
+class ClipTask(Task[Clip]):
+    """Task for processing a single clip."""
+
+    data: Clip = field(default_factory=Clip)
+
+    @property
+    def num_items(self) -> int:
+        return 1
+
+    def validate(self) -> bool:
+        return True

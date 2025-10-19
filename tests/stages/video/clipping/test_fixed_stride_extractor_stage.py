@@ -28,7 +28,7 @@ class TestFixedStrideExtractorStage:
     def setup_method(self):
         """Set up test fixtures."""
         self.stage = FixedStrideExtractorStage(
-            clip_len_s=5.0, clip_stride_s=2.5, min_clip_length_s=1.0, limit_clips=10
+            max_clip_sec=5.0, clip_stride_sec=2.5, min_clip_sec=1.0, max_clips_per_video=10
         )
 
         # Create a mock video with complete metadata
@@ -79,7 +79,7 @@ class TestFixedStrideExtractorStage:
             assert clip.source_video == "test_video.mp4"
             assert len(clip.span) == 2
             assert clip.span[0] < clip.span[1]
-            assert (clip.span[1] - clip.span[0]) >= self.stage.min_clip_length_s
+            assert (clip.span[1] - clip.span[0]) >= self.stage.min_clip_sec
 
     def test_process_no_source_bytes(self):
         """Test processing when source_bytes is None."""
@@ -101,7 +101,7 @@ class TestFixedStrideExtractorStage:
     def test_process_already_clipped(self):
         """Test processing when video already has clips and limit is reached."""
         # Add existing clips to reach the limit
-        for i in range(self.stage.limit_clips):
+        for i in range(self.stage.max_clips_per_video):
             clip = Clip(uuid=uuid.uuid4(), source_video="test_video.mp4", span=(i * 5.0, (i + 1) * 5.0))
             self.mock_video.clips.append(clip)
 
@@ -109,7 +109,7 @@ class TestFixedStrideExtractorStage:
 
         assert isinstance(result, VideoTask)
         # Should return the same task without adding new clips
-        assert len(result.data.clips) == self.stage.limit_clips
+        assert len(result.data.clips) == self.stage.max_clips_per_video
 
     def test_process_missing_framerate(self):
         """Test processing when framerate is None."""
@@ -166,7 +166,7 @@ class TestFixedStrideExtractorStage:
         result = self.stage.process(task)
 
         # Calculate expected clips
-        # clip_len_s=5.0, clip_stride_s=2.5, duration=20.0
+        # max_clip_sec=5.0, clip_stride_sec=2.5, duration=20.0
         # Expected clips: (0,5), (2.5,7.5), (5,10), (7.5,12.5), (10,15), (12.5,17.5), (15,20), (17.5,20)
         expected_clips = [
             (0.0, 5.0),
@@ -194,13 +194,13 @@ class TestFixedStrideExtractorStage:
             assert clip.uuid == expected_uuid
 
     def test_min_clip_length_filtering(self):
-        """Test that clips shorter than min_clip_length_s are filtered out."""
+        """Test that clips shorter than min_clip_sec are filtered out."""
         # Create a stage with longer minimum clip length
         stage = FixedStrideExtractorStage(
-            clip_len_s=2.0,
-            clip_stride_s=1.0,
-            min_clip_length_s=3.0,  # Longer than clip_len_s
-            limit_clips=10,
+            max_clip_sec=2.0,
+            clip_stride_sec=1.0,
+            min_clip_sec=3.0,  # Longer than max_clip_sec
+            max_clips_per_video=10,
         )
 
         video = Video(
@@ -221,16 +221,16 @@ class TestFixedStrideExtractorStage:
 
         result = stage.process(task)
 
-        # All clips should be filtered out because they're shorter than min_clip_length_s
+        # All clips should be filtered out because they're shorter than min_clip_sec
         assert len(result.data.clips) == 0
 
     def test_limit_clips_enforcement(self):
-        """Test that the limit_clips parameter is respected when clips already exist."""
+        """Test that the max_clips_per_video parameter is respected when clips already exist."""
         stage = FixedStrideExtractorStage(
-            clip_len_s=1.0,
-            clip_stride_s=0.5,
-            min_clip_length_s=0.5,
-            limit_clips=3,  # Limit to 3 clips
+            max_clip_sec=1.0,
+            clip_stride_sec=0.5,
+            min_clip_sec=0.5,
+            max_clips_per_video=3,  # Limit to 3 clips
         )
 
         video = Video(
@@ -248,7 +248,7 @@ class TestFixedStrideExtractorStage:
         )
 
         # Add existing clips to reach the limit
-        for i in range(stage.limit_clips):
+        for i in range(stage.max_clips_per_video):
             clip = Clip(uuid=uuid.uuid4(), source_video="test_video.mp4", span=(i * 1.0, (i + 1) * 1.0))
             video.clips.append(clip)
 
@@ -257,15 +257,15 @@ class TestFixedStrideExtractorStage:
         result = stage.process(task)
 
         # Should return the same task without adding new clips
-        assert len(result.data.clips) == stage.limit_clips
+        assert len(result.data.clips) == stage.max_clips_per_video
 
     def test_no_limit_clips(self):
-        """Test behavior when limit_clips is 0 (no limit)."""
+        """Test behavior when max_clips_per_video is 0 (no limit)."""
         stage = FixedStrideExtractorStage(
-            clip_len_s=5.0,
-            clip_stride_s=2.5,
-            min_clip_length_s=1.0,
-            limit_clips=0,  # No limit
+            max_clip_sec=5.0,
+            clip_stride_sec=2.5,
+            min_clip_sec=1.0,
+            max_clips_per_video=0,  # No limit
         )
 
         result = stage.process(self.mock_task)
@@ -295,7 +295,7 @@ class TestFixedStrideExtractorStage:
 
         result = self.stage.process(task)
 
-        # Should have one clip from 0.0 to 1.0 (min(clip_len_s, duration))
+        # Should have one clip from 0.0 to 1.0 (min(max_clip_sec, duration))
         assert len(result.data.clips) == 1
         assert result.data.clips[0].span == (0.0, 1.0)
 
@@ -308,7 +308,7 @@ class TestFixedStrideExtractorStage:
                 height=1080,
                 width=1920,
                 framerate=30.0,
-                num_frames=150,  # 5 seconds (exactly clip_len_s)
+                num_frames=150,  # 5 seconds (exactly max_clip_sec)
                 duration=5.0,
                 video_codec="h264",
             ),
@@ -358,19 +358,19 @@ class TestFixedStrideExtractorStage:
     def test_different_parameter_combinations(self):
         """Test various parameter combinations."""
         test_cases = [
-            # format as: (clip_len_s, clip_stride_s, min_clip_length_s, limit_clips)
+            # format as: (max_clip_sec, clip_stride_sec, min_clip_sec, max_clips_per_video)
             (1.0, 0.5, 0.5, 5),
             (5.0, 10.0, 2.0, 0),  # Non-overlapping clips with reasonable min length
             (2.0, 1.0, 1.5, 3),
             (3.0, 3.0, 1.0, 10),  # No overlap between clips
         ]
 
-        for clip_len_s, clip_stride_s, min_clip_length_s, limit_clips in test_cases:
+        for max_clip_sec, clip_stride_sec, min_clip_sec, max_clips_per_video in test_cases:
             stage = FixedStrideExtractorStage(
-                clip_len_s=clip_len_s,
-                clip_stride_s=clip_stride_s,
-                min_clip_length_s=min_clip_length_s,
-                limit_clips=limit_clips,
+                max_clip_sec=max_clip_sec,
+                clip_stride_sec=clip_stride_sec,
+                min_clip_sec=min_clip_sec,
+                max_clips_per_video=max_clips_per_video,
             )
 
             # Create a fresh video for each test case
@@ -401,16 +401,16 @@ class TestFixedStrideExtractorStage:
 
             # Validate clip properties
             for clip in result.data.clips:
-                assert clip.span[1] - clip.span[0] >= min_clip_length_s
+                assert clip.span[1] - clip.span[0] >= min_clip_sec
                 assert clip.source_video == "test_video.mp4"
 
     def test_limit_clips_generation(self):
-        """Test that limit_clips doesn't limit generation of new clips (current behavior)."""
+        """Test that max_clips_per_video doesn't limit generation of new clips (current behavior)."""
         stage = FixedStrideExtractorStage(
-            clip_len_s=1.0,
-            clip_stride_s=0.5,
-            min_clip_length_s=0.5,
-            limit_clips=3,  # This currently only applies to existing clips
+            max_clip_sec=1.0,
+            clip_stride_sec=0.5,
+            min_clip_sec=0.5,
+            max_clips_per_video=3,  # This currently only applies to existing clips
         )
 
         video = Video(
@@ -431,7 +431,7 @@ class TestFixedStrideExtractorStage:
 
         result = stage.process(task)
 
-        # Currently, limit_clips doesn't limit generation, only prevents processing if clips exist
+        # Currently, max_clips_per_video doesn't limit generation, only prevents processing if clips exist
         # For a 5s video with 1s clips and 0.5s stride, we expect 10 clips
         assert len(result.data.clips) == 10  # Not limited to 3
 
@@ -482,6 +482,6 @@ class TestFixedStrideExtractorStage:
 
         result = self.stage.process(task)
 
-        # Should process successfully but likely generate no clips due to min_clip_length_s
+        # Should process successfully but likely generate no clips due to min_clip_sec
         assert isinstance(result, VideoTask)
         assert len(result.data.clips) == 0  # No clips meet minimum length requirement

@@ -49,7 +49,7 @@ class TestTransNetV2ClipExtractionStage:
             crop_s=0.5,
             entire_scene_as_clip=True,
             gpu_memory_gb=10,
-            limit_clips=5,
+            max_clips_per_video=5,
             verbose=True,
         )
 
@@ -105,7 +105,7 @@ class TestTransNetV2ClipExtractionStage:
         assert stage.crop_s == 0.5
         assert stage.entire_scene_as_clip is True
         assert stage.gpu_memory_gb == 10
-        assert stage.limit_clips == -1
+        assert stage.max_clips_per_video == -1
         assert stage.verbose is False
 
     def test_stage_initialization_custom_params(self):
@@ -118,7 +118,7 @@ class TestTransNetV2ClipExtractionStage:
             crop_s=1.0,
             entire_scene_as_clip=False,
             gpu_memory_gb=20,
-            limit_clips=10,
+            max_clips_per_video=10,
             verbose=True,
         )
         assert stage.threshold == 0.6
@@ -128,7 +128,7 @@ class TestTransNetV2ClipExtractionStage:
         assert stage.crop_s == 1.0
         assert stage.entire_scene_as_clip is False
         assert stage.gpu_memory_gb == 20
-        assert stage.limit_clips == 10
+        assert stage.max_clips_per_video == 10
         assert stage.verbose is True
 
     @patch("nemo_curator.models.transnetv2.TransNetV2")
@@ -291,7 +291,7 @@ class TestTransNetV2ClipExtractionStage:
     def test_process_with_limit_clips(self, mock_transnetv2_class: Mock):
         """Test processing with clip limit."""
         # Create stage with clip limit
-        stage = TransNetV2ClipExtractionStage(limit_clips=2)
+        stage = TransNetV2ClipExtractionStage(max_clips_per_video=2)
 
         # Mock the model
         mock_model = Mock()
@@ -662,7 +662,7 @@ class TestIntegration:
         """Test complete pipeline integration."""
         # Setup
         stage = TransNetV2ClipExtractionStage(
-            threshold=0.5, min_length_s=1.0, max_length_s=5.0, max_length_mode="stride", crop_s=0.2, limit_clips=3
+            threshold=0.5, min_length_s=1.0, max_length_s=5.0, max_length_mode="stride", crop_s=0.2, max_clips_per_video=3
         )
 
         # Create test video
@@ -703,7 +703,7 @@ class TestIntegration:
             # Verify results
             assert isinstance(result, VideoTask)
             assert isinstance(result.data, Video)
-            assert len(result.data.clips) <= 3  # Should respect limit_clips
+            assert len(result.data.clips) <= 3  # Should respect max_clips_per_video
             assert result.data.frame_array is None  # Should be cleared
 
             # Verify clip properties

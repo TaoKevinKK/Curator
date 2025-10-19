@@ -32,7 +32,7 @@ from nemo_curator.tasks import DocumentBatch, FileGroupTask
 
 @dataclass
 class BaseReader(ProcessingStage[FileGroupTask, DocumentBatch]):
-    """Common base for tabular file readers.
+    """Common base for tabular file .
 
     Subclasses must implement the read_data method.
     """

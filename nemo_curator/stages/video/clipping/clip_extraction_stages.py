@@ -18,7 +18,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from typing import Any
-
+from pathlib import Path
 from cosmos_xenna.ray_utils.resources import _get_local_gpu_info, _make_gpu_resources_from_gpu_name
 from loguru import logger
 
@@ -26,9 +26,19 @@ from nemo_curator.backends.base import WorkerMetadata
 from nemo_curator.backends.experimental.utils import RayStageSpecKeys
 from nemo_curator.stages.base import ProcessingStage
 from nemo_curator.stages.resources import Resources, _get_gpu_memory_gb
-from nemo_curator.tasks.video import Clip, Video, VideoTask
+from nemo_curator.tasks.video import Clip, Video, VideoTask, ClipTask
 from nemo_curator.utils import grouping
 from nemo_curator.utils.operation_utils import make_pipeline_temporary_dir
+from nemo_curator.utils.decoder_utils import (
+    FrameExtractionPolicy,
+    FrameExtractionSignature,
+    FramePurpose,
+    extract_frames,
+    decode_video_cpu,
+    with_preserved_stream_position,
+    read_video_stream,
+    get_video_timestamps,
+)
 
 
 @dataclass
@@ -110,6 +120,12 @@ class ClipTranscodingStage(ProcessingStage[VideoTask, VideoTask]):
             video.source_bytes = None
             return task
 
+        if video.source_bytes is None:
+            video.input_video = Path(video.input_video)
+            with video.input_video.open("rb") as fp:
+                video.source_bytes = fp.read()
+            logger.info(f"Read video source bytes for {video.input_video} size {len(video.source_bytes)}")
+
         with make_pipeline_temporary_dir(sub_dir="transcode") as tmp_dir:
             # write video to file
             video_file = tmp_dir / "input.mp4"
@@ -145,6 +161,7 @@ class ClipTranscodingStage(ProcessingStage[VideoTask, VideoTask]):
                 f"min-clip={min(clip_durations):.2f}s, "
                 f"max-clip={max(clip_durations):.1f}s.",
             )
+        # 这里是把若干个clip划分为一组, 避免单个clip
         clip_chunks = list(
             grouping.split_by_chunk_size(
                 video.clips,
@@ -344,19 +361,28 @@ class ClipTranscodingStage(ProcessingStage[VideoTask, VideoTask]):
 
 
 @dataclass
-class FixedStrideExtractorStage(ProcessingStage[VideoTask, VideoTask]):
+class FixedStrideExtractorStage(ProcessingStage[VideoTask, ClipTask]):
     """Stage that extracts video clips using fixed-length intervals.
 
     This stage splits videos into clips of specified length and stride, ensuring
     each clip meets minimum length requirements and optionally limiting total clips.
     """
 
-    clip_len_s: float
-    clip_stride_s: float
-    min_clip_length_s: float
-    limit_clips: int
+    # 每个clip的最大长度，单位是秒
+    max_clip_sec: float
+    # 每个clip的步长，单位是秒
+    clip_stride_sec: float
+    # 每个clip的最小长度，单位是秒
+    min_clip_sec: float
+    # 限制每个视频的clip数量
+    max_clips_per_video: int
     verbose: bool = False
     _name: str = "fixed_stride_extractor"
+
+    def __post_init__(self) -> None:
+        """Post-initialization method called after all fields are set."""
+        if self.clip_stride_sec <= 0:
+            raise ValueError("clip_stride_sec must be > 0 to avoid infinite loop")
 
     def inputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
@@ -364,18 +390,14 @@ class FixedStrideExtractorStage(ProcessingStage[VideoTask, VideoTask]):
     def outputs(self) -> tuple[list[str], list[str]]:
         return ["data"], []
 
-    def process(self, task: VideoTask) -> VideoTask:
+    def process(self, task: VideoTask) -> list[ClipTask]:
         video = task.data
-        if video.source_bytes is None:
-            msg = "Video source bytes are not available"
-            raise ValueError(msg)
-
         if not video.has_metadata():
             logger.warning(f"Incomplete metadata for {video.input_video}. Skipping...")
             video.errors["metadata"] = "incomplete"
             return task
 
-        if self.limit_clips > 0 and len(video.clips) >= self.limit_clips:
+        if self.max_clips_per_video > 0 and len(video.clips) >= self.max_clips_per_video:
             logger.warning(f"Skipping {video.input_video} because it has already been clipped")
             return task
 
@@ -386,15 +408,23 @@ class FixedStrideExtractorStage(ProcessingStage[VideoTask, VideoTask]):
 
         duration = video.metadata.num_frames / video.metadata.framerate if video.metadata.framerate > 0 else -1
 
-        # create clip bounds based on clip_len_s and clip_stride_s
+        # create clip bounds based on max_clip_sec and clip_stride_sec
         clip_start = 0.0
         clip_bounds: list[tuple[float, float]] = []
-        while clip_start < duration:
-            clip_end = min(clip_start + self.clip_len_s, duration)
-            if (clip_end - clip_start) >= self.min_clip_length_s:
-                clip_bounds.append((clip_start, clip_end))
-            clip_start += self.clip_stride_s
 
+        while clip_start < duration:
+            clip_end = min(clip_start + self.max_clip_sec, duration)
+            if (clip_end - clip_start) >= self.min_clip_sec:
+                clip_bounds.append((clip_start, clip_end))
+            clip_start += self.clip_stride_sec
+
+        output_tasks = []
+        stream = read_video_stream(file)
+        with with_preserved_stream_position(stream):
+            video_timestamps = get_video_timestamps(stream, 0, None)
+
+        clip_uuid = []
+        index = 0
         for span in clip_bounds:
             start_event = int(span[0] * video.metadata.framerate)
             end_event = int(span[1] * video.metadata.framerate)
@@ -405,8 +435,20 @@ class FixedStrideExtractorStage(ProcessingStage[VideoTask, VideoTask]):
                 ),
                 source_video=str(file),
                 span=span,
+                source_video_timestamps = video_timestamps,
             )
-            video.clips.append(clip)
+            # video.clips.append(clip)
+            subtask = ClipTask(
+                task_id=f"{task.task_id}_clip_{clip.uuid}",
+                dataset_name=task.dataset_name,
+                data=clip,
+                _stage_perf=copy.deepcopy(task._stage_perf),
+                _metadata=copy.deepcopy(task._metadata),
+            )
+            clip_uuid.append(clip.uuid)
+            index += 1
+            output_tasks.append(subtask)
 
-        logger.info(f"Extracted {len(task.data.clips)} clips from {task.data.input_video}")
-        return task
+        logger.info(f"Output task size is {len(output_tasks)} clips from {task.data.input_video}")
+        logger.info(f"Clip UUIDs: {clip_uuid}")
+        return output_tasks

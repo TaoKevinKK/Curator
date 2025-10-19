@@ -115,10 +115,10 @@ pipeline.add_stage(
 ```python
 pipeline.add_stage(
     FixedStrideExtractorStage(
-        clip_len_s=10.0,
-        clip_stride_s=10.0,
-        min_clip_length_s=2.0,
-        limit_clips=0,
+        max_clip_sec=10.0,
+        clip_stride_sec=10.0,
+        min_clip_sec=2.0,
+        max_clips_per_video=0,
     )
 )
 ```
@@ -141,7 +141,7 @@ pipeline.add_stage(
         max_length_mode="stride",
         crop_s=0.5,
         gpu_memory_gb=10.0,
-        limit_clips=0,
+        max_clips_per_video=0,
         verbose=True,
     )
 )

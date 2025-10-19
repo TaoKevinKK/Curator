@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,7 +49,8 @@ class VideoReaderStage(ProcessingStage[FileGroupTask, VideoTask]):
     """
 
     input_path: str | None = None
-    verbose: bool = False
+    verbose: bool = True
+    transfer_video_bytes: bool = False
     _name: str = "video_reader"
 
     def inputs(self) -> tuple[list[str], list[str]]:
@@ -66,9 +68,9 @@ class VideoReaderStage(ProcessingStage[FileGroupTask, VideoTask]):
         Returns:
             Tuple of (top_level_attrs, data_attrs) where:
             - top_level_attrs: ["data"] - populates VideoTask.data
-            - data_attrs: ["source_bytes", "metadata"] - populates Video.source_bytes and Video.metadata
+            - data_attrs: ["metadata"] - populates Video.metadata
         """
-        return ["data"], ["source_bytes", "metadata"]
+        return ["data"], ["metadata"]
 
     def process(self, task: FileGroupTask) -> VideoTask:
         """Process a video task by reading file bytes and extracting metadata.
@@ -97,7 +99,7 @@ class VideoReaderStage(ProcessingStage[FileGroupTask, VideoTask]):
         )
 
         # Download video bytes
-        if not self._download_video_bytes(video):
+        if self.transfer_video_bytes and not self._download_video_bytes(video):
             return video_task
 
         # Extract metadata and validate video properties
@@ -270,6 +272,7 @@ class VideoReader(CompositeStage[_EmptyTask, VideoTask]):
                 limit=self.video_limit,
             )
         else:
+            # local file path
             reader_stage = FilePartitioningStage(
                 file_paths=self.input_video_path,
                 files_per_partition=1,

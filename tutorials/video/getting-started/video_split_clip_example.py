@@ -48,10 +48,10 @@ def create_video_splitting_pipeline(args: argparse.Namespace) -> Pipeline:  # no
     if args.splitting_algorithm == "fixed_stride":
         pipeline.add_stage(
             FixedStrideExtractorStage(
-                clip_len_s=args.fixed_stride_split_duration,
-                clip_stride_s=args.fixed_stride_split_duration,
-                min_clip_length_s=args.fixed_stride_min_clip_length_s,
-                limit_clips=args.limit_clips,
+                max_clip_sec=args.fixed_stride_split_duration,
+                clip_stride_sec=args.fixed_stride_split_duration,
+                min_clip_sec=args.fixed_stride_min_clip_length_s,
+                max_clips_per_video=args.max_clips_per_video,
             )
         )
     elif args.splitting_algorithm == "transnetv2":
@@ -70,7 +70,7 @@ def create_video_splitting_pipeline(args: argparse.Namespace) -> Pipeline:  # no
                 max_length_mode=args.transnetv2_max_length_mode,
                 crop_s=args.transnetv2_crop_s,
                 gpu_memory_gb=args.transnetv2_gpu_memory_gb,
-                limit_clips=args.limit_clips,
+                max_clips_per_video=args.max_clips_per_video,
                 verbose=args.verbose,
             )
         )
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--transcode-encoder",
         type=str,
-        default="libopenh264",
+        default="libx264",
         choices=["libopenh264", "h264_nvenc", "libx264"],
         help="Codec for transcoding clips; None to skip transocding.",
     )

@@ -47,7 +47,7 @@ from nemo_curator.stages.video.embedding.internvideo2 import (
 )
 
 pipe = Pipeline(name="clip_frames_embeddings")
-pipe.add_stage(FixedStrideExtractorStage(clip_len_s=10.0, clip_stride_s=10.0))
+pipe.add_stage(FixedStrideExtractorStage(max_clip_sec=10.0, clip_stride_sec=10.0))
 pipe.add_stage(
     ClipFrameExtractionStage(
         extraction_policies=(FrameExtractionPolicy.sequence,),

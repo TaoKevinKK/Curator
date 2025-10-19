@@ -16,6 +16,7 @@ import enum
 import io
 import json
 import subprocess
+import time
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -137,10 +138,10 @@ def extract_video_metadata(video: str | bytes) -> VideoMetadata:
             video_path.write_bytes(video)
             real_video_path = video_path
         else:
-            real_video_path = Path(str(video))
-        if not real_video_path.exists():
-            error_msg = f"{real_video_path} not found!"
-            raise FileNotFoundError(error_msg)
+            real_video_path = Path(video)
+            if not real_video_path.exists():
+                error_msg = f"Video file {real_video_path.as_posix()} not found!"
+                raise FileNotFoundError(error_msg)
         cmd.append(real_video_path.as_posix())
         result = subprocess.run(cmd, input=inp, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)  # noqa: UP022, S603
         video_info = json.loads(result.stdout)
@@ -187,7 +188,7 @@ def extract_video_metadata(video: str | bytes) -> VideoMetadata:
     )
 
 
-def _make_video_stream(data: Path | str | BinaryIO | bytes | io.BytesIO | io.BufferedReader) -> BinaryIO:
+def read_video_stream(data: Path | str | BinaryIO | bytes | io.BytesIO | io.BufferedReader) -> BinaryIO:
     """Convert various input types into a binary stream for video processing.
 
     This function handles different input types that could represent video
@@ -224,7 +225,7 @@ def _make_video_stream(data: Path | str | BinaryIO | bytes | io.BytesIO | io.Buf
 
 
 @contextmanager
-def save_stream_position(stream: BinaryIO) -> Generator[BinaryIO, None, None]:
+def with_preserved_stream_position(stream: BinaryIO) -> Generator[BinaryIO, None, None]:
     """Context manager that saves and restores stream position."""
     pos = stream.tell()
     try:
@@ -260,7 +261,7 @@ def get_video_timestamps(
         A numpy array of monotonically increasing timestamps.
 
     """
-    stream = _make_video_stream(data)
+    stream = read_video_stream(data)
 
     timestamps: list[float] = []
     with av.open(stream, format=video_format) as container:
@@ -420,7 +421,7 @@ def decode_video_cpu_frame_ids(  # noqa: PLR0913
         the decoded frames.
 
     """
-    stream = _make_video_stream(data)
+    stream = read_video_stream(data)
 
     _counts = counts
     if _counts is None:
@@ -482,8 +483,8 @@ def get_avg_frame_rate(
         The average frame rate of the video.
 
     """
-    stream = _make_video_stream(data)
-    with save_stream_position(stream), av.open(stream, format=video_format) as container:
+    stream = read_video_stream(data)
+    with with_preserved_stream_position(stream), av.open(stream, format=video_format) as container:
         video_stream = container.streams.video[stream_idx]
 
         if video_stream.average_rate is not None:
@@ -550,15 +551,15 @@ def decode_video_cpu(  # noqa: PLR0913
             the specified tolerance
 
     """
-    stream = _make_video_stream(data)
+    stream = read_video_stream(data)
     _timestamps = timestamps
     if _timestamps is None:
-        with save_stream_position(stream):
+        with with_preserved_stream_position(stream):
             _timestamps = get_video_timestamps(stream, stream_idx, video_format)
 
     _start = _timestamps[0] if start is None else start
     _stop = _timestamps[-1] if stop is None else stop
-
+    
     frame_ids, counts, _ = sample_closest(
         _timestamps,
         sample_rate=sample_rate_fps,
@@ -568,8 +569,9 @@ def decode_video_cpu(  # noqa: PLR0913
         dedup=True,
     )
 
-    with save_stream_position(stream):
-        return decode_video_cpu_frame_ids(
+    t2 = time.time()
+    with with_preserved_stream_position(stream):
+        frames = decode_video_cpu_frame_ids(
             stream,
             frame_ids,
             counts,
@@ -577,7 +579,89 @@ def decode_video_cpu(  # noqa: PLR0913
             num_threads=num_threads,
             video_format=video_format,
         )
+    frame_count = frames.shape[0]
+    print(f"Time taken to decode video cpu frame ids: {time.time() - t2} seconds, frame_count: {frame_count}, num threads: {num_threads}")
+    return frames
 
+
+def extract_frames_with_clip_span_generator(
+    video_path: str, 
+    clip_span: tuple[float, float], 
+    max_frames: int | None = None
+) -> Generator[npt.NDArray[np.uint8], None, None]:
+    """Extract frames from a video with a clip span using a generator (最低内存使用版本).
+    
+    This version yields frames one by one, using minimal memory.
+    Use this when you need to process frames sequentially without storing all frames.
+
+    Args:
+        video_path: Path to the video file to process.
+        clip_span: Span of the clip to extract.
+        max_frames: Maximum number of frames to extract (None for no limit).
+    Yields:
+        Individual frames as numpy arrays of shape (height, width, channels)
+    """
+    clip_start_sec, clip_end_sec = clip_span
+    frame_count = 0
+    
+    with av.open(video_path) as container:
+        container = cast("InputContainer", container)
+        video_stream = next(s for s in container.streams if s.type == "video")
+        video_stream.thread_type = 3
+        video_stream.thread_count = 1
+        
+        # seek to the start of the clip
+        target_pts = int(clip_start_sec / video_stream.time_base)
+        container.seek(target_pts, stream=video_stream, any_frame=False, backward=True)
+        for frame in container.decode(video=0):
+            if frame.time is None or frame.pts is None:
+                continue
+                
+            frame_time = frame.pts * video_stream.time_base
+            if frame_time < clip_start_sec:
+                continue
+            if frame_time > clip_end_sec:
+                break  # 超出范围提前结束
+                
+            yield frame.to_ndarray(format="rgb24")
+            frame_count += 1
+            
+            if max_frames is not None and frame_count >= max_frames:
+                break
+            
+
+def extract_frames_with_clip_span(video_path: str, clip_span: tuple[float, float]):
+    """Extract frames from a video with a clip span.
+
+    Args:
+        video_path: Path to the video file to process.
+        clip_span: Span of the clip to extract.
+    Returns:
+        A numpy array of shape (num_frames, height, width, channels) containing the decoded
+        frames in RGB24 format
+    """
+    clip_start_sec, clip_end_sec = clip_span
+    frames_list = []
+    with av.open(video_path) as container:
+        container = cast("InputContainer", container)
+        video_stream = next(s for s in container.streams if s.type == "video")
+        video_stream.thread_type = 3
+        video_stream.thread_count = 1
+        # seek to the start of the clip
+        target_pts = int(clip_start_sec / video_stream.time_base)
+        container.seek(target_pts, stream=video_stream, any_frame=False, backward=True)
+        frame_iterator: Iterator[av.VideoFrame] = container.decode(video=0)
+        for frame_id, frame in enumerate(frame_iterator):
+            if frame.time is None or frame.pts is None:
+                continue
+            frame_time = frame.pts * video_stream.time_base
+            if frame_time < clip_start_sec:
+                continue
+            if frame_time > clip_end_sec:
+                break  # 超出范围提前结束
+            frames_list.append(frame.to_ndarray(format="rgb24"))
+
+    return np.stack(frames_list) if frames_list else np.empty((0,))
 
 def get_frame_count(data: Path | str | BinaryIO | bytes, stream_idx: int = 0, video_format: str | None = None) -> int:
     """Get the total number of frames in a video file or stream.
@@ -593,8 +677,8 @@ def get_frame_count(data: Path | str | BinaryIO | bytes, stream_idx: int = 0, vi
         The total number of frames in the video stream.
 
     """
-    stream = _make_video_stream(data)
-    with save_stream_position(stream), av.open(stream, format=video_format) as container:
+    stream = read_video_stream(data)
+    with with_preserved_stream_position(stream), av.open(stream, format=video_format) as container:
         frame_count = container.streams.video[stream_idx].frames
         if frame_count is None:
             timestamps = get_video_timestamps(stream, stream_idx, video_format)  # type: ignore[unreachable]
@@ -629,21 +713,21 @@ def extract_frames(  # noqa: PLR0913
         frames in RGB24 format
 
     """
-    stream = _make_video_stream(video)
+    stream = read_video_stream(video)
 
-    with save_stream_position(stream):
-        all_timestamps = get_video_timestamps(stream, stream_idx, video_format)
+    with with_preserved_stream_position(stream):
+        all_video_timestamps = get_video_timestamps(stream, stream_idx, video_format)
 
-    if len(all_timestamps) == 0:
+    if len(all_video_timestamps) == 0:
         error_msg = "Can't extract frames from empty video"
         raise ValueError(error_msg)
 
-    if extraction_policy == FrameExtractionPolicy.sequence or len(all_timestamps) == 1:
-        timestamps = all_timestamps
+    if extraction_policy == FrameExtractionPolicy.sequence or len(all_video_timestamps) == 1:
+        timestamps = all_video_timestamps
     elif extraction_policy == FrameExtractionPolicy.middle:
-        num_ts = len(all_timestamps)
+        num_ts = len(all_video_timestamps)
         idx = num_ts // 2 - 1 if num_ts % 2 == 0 else num_ts // 2
-        timestamps = all_timestamps[idx : idx + 1]
+        timestamps = all_video_timestamps[idx : idx + 1]
     else:
         error_msg = "Extraction policies apart from Sequence and Middle not available yet"
         raise NotImplementedError(error_msg)

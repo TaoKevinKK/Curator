@@ -54,7 +54,7 @@ class TransNetV2ClipExtractionStage(ProcessingStage[VideoTask, VideoTask]):
     entire_scene_as_clip: (bool) If true, will assign the entire video as a clip if no transition is detected.
         N.B. If you are using this stage to check whether a video contains one or more transitions,
         set this to False!
-    limit_clips: (int) limit number of clips
+    max_clips_per_video: (int) limit number of clips
     gpu_memory_gb: (float) gpu memory in GB
     verbose: (bool) verbose
     """
@@ -66,7 +66,7 @@ class TransNetV2ClipExtractionStage(ProcessingStage[VideoTask, VideoTask]):
     crop_s: float | None = 0.5
     entire_scene_as_clip: bool = True
     gpu_memory_gb: int = 10
-    limit_clips: int = -1
+    max_clips_per_video: int = -1
     verbose: bool = False
     _name: str = "transnetv2_clip_extraction"
 
@@ -134,7 +134,7 @@ class TransNetV2ClipExtractionStage(ProcessingStage[VideoTask, VideoTask]):
                 ),
             )
             video.clips.append(clip)
-            if self.limit_clips > 0 and len(video.clips) >= self.limit_clips:
+            if self.max_clips_per_video > 0 and len(video.clips) >= self.max_clips_per_video:
                 break
 
         video.frame_array = None  # clear frame array to save memory

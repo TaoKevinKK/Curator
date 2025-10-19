@@ -53,10 +53,10 @@ pipe = Pipeline(name="clipping_examples")
 # Fixed Stride
 pipe.add_stage(
     FixedStrideExtractorStage(
-        clip_len_s=10.0,
-        clip_stride_s=10.0,
-        min_clip_length_s=2.0,
-        limit_clips=0,
+        max_clip_sec=10.0,
+        clip_stride_sec=10.0,
+        min_clip_sec=2.0,
+        max_clips_per_video=0,
     )
 )
 
@@ -71,7 +71,7 @@ pipe.add_stage(
         max_length_mode="stride",
         crop_s=0.5,
         gpu_memory_gb=10.0,
-        limit_clips=-1,
+        max_clips_per_video=-1,
         verbose=True,
     )
 )
@@ -113,27 +113,27 @@ python -m nemo_curator.examples.video.video_split_clip_example \
 
 ### Fixed Stride
 
-The `FixedStrideExtractorStage` steps through the video duration by `clip_stride_s`, creating spans of length `clip_len_s` (it truncates the final span at the video end when needed). It filters spans shorter than `min_clip_length_s` and appends `Clip` objects identified by source and frame indices.
+The `FixedStrideExtractorStage` steps through the video duration by `clip_stride_sec`, creating spans of length `max_clip_sec` (it truncates the final span at the video end when needed). It filters spans shorter than `min_clip_sec` and appends `Clip` objects identified by source and frame indices.
 
 ```python
 from nemo_curator.stages.video.clipping.clip_extraction_stages import FixedStrideExtractorStage
 
 stage = FixedStrideExtractorStage(
-    clip_len_s=10.0,
-    clip_stride_s=10.0,
-    min_clip_length_s=2.0,
-    limit_clips=0,
+    max_clip_sec=10.0,
+    clip_stride_sec=10.0,
+    min_clip_sec=2.0,
+    max_clips_per_video=0,
 )
 ```
 
-:::{tip} If `limit_clips > 0` and the `Video` already has clips, the stage skips processing. It does not cap the number of clips generated within the same run.
+:::{tip} If `max_clips_per_video > 0` and the `Video` already has clips, the stage skips processing. It does not cap the number of clips generated within the same run.
 :::
 
 ### TransNetV2 Scene-Change Detection
 
 TransNetV2 is a shot-boundary detection model that identifies transitions between shots. The stage converts those transitions into scenes, applies length/crop rules, and emits clips aligned to scene boundaries.
 
-Using extracted frames of size 27×48×3, the model predicts shot transitions, converts them into scenes, and applies filtering: `min_length_s`, `max_length_s` with `max_length_mode` ("truncate" or "stride"), and optional `crop_s` at both ends. It creates `Clip` objects for the resulting spans, then stops after it reaches `limit_clips` (> 0), and releases frames from memory after processing.
+Using extracted frames of size 27×48×3, the model predicts shot transitions, converts them into scenes, and applies filtering: `min_length_s`, `max_length_s` with `max_length_mode` ("truncate" or "stride"), and optional `crop_s` at both ends. It creates `Clip` objects for the resulting spans, then stops after it reaches `max_clips_per_video` (> 0), and releases frames from memory after processing.
 
 1. Run `VideoFrameExtractionStage` first to populate `video.frame_array`.
 
@@ -162,7 +162,7 @@ Using extracted frames of size 27×48×3, the model predicts shot transitions, c
        max_length_mode="stride",  # or "truncate"
        crop_s=0.5,
        gpu_memory_gb=10.0,
-       limit_clips=-1,
+       max_clips_per_video=-1,
        verbose=True,
    )
    ```

@@ -13,5 +13,21 @@
 # limitations under the License.
 
 from .executor import XennaExecutor
+from .actor_adapter import (
+    create_xenna_actor_stage,
+    XennaActorStageAdapter,
+    FlatMapActorStageAdapter,
+    MapBatchActorStageAdapter,
+    MapBatchPyarrowActorStageAdapter,
+    DatasetActorStageAdapter,
+)
 
-__all__ = ["XennaExecutor"]
+__all__ = [
+    "XennaExecutor",
+    "create_xenna_actor_stage",
+    "XennaActorStageAdapter",
+    "FlatMapActorStageAdapter",
+    "MapBatchActorStageAdapter",
+    "MapBatchPyarrowActorStageAdapter",
+    "DatasetActorStageAdapter",
+]

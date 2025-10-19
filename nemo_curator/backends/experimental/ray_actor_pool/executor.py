@@ -80,7 +80,7 @@ class RayActorPoolExecutor(BaseExecutor):
         try:
             # Initialize Ray and register loguru serializer
             register_loguru_serializer()
-            ray.init(ignore_reinit_error=True, runtime_env=_parse_runtime_env(self.config.get("runtime_env", {})))
+            ray.init(ignore_reinit_error=True, runtime_env=_parse_runtime_env(self.config.get("runtime_env", {})), dashboard_host="0.0.0.0")
 
             # Execute setup on node for all stages BEFORE processing begins
             execute_setup_on_node(stages)
