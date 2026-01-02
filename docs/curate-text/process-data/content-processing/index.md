@@ -1,7 +1,7 @@
 ---
-description: "Clean, normalize, and transform text content to meet specific requirements including PII removal and text cleaning"
+description: "Clean, normalize, and transform text content to meet specific requirements including text cleaning and normalization"
 categories: ["workflows"]
-tags: ["content-processing", "text-cleaning", "pii-removal", "unicode", "normalization"]
+tags: ["content-processing", "text-cleaning", "unicode", "normalization"]
 personas: ["data-scientist-focused", "mle-focused"]
 difficulty: "intermediate"
 content_type: "workflow"
@@ -13,13 +13,13 @@ modality: "text-only"
 
 Clean, normalize, and transform text content to meet specific requirements for training language models using NeMo Curator's tools and utilities.
 
-Content processing involves transforming your text data while preserving essential information. This includes fixing encoding issues, removing sensitive information, and standardizing text format to ensure high-quality input for model training.
+Content processing involves transforming your text data while preserving essential information. This includes fixing encoding issues and standardizing text format to ensure high-quality input for model training.
 
 ## How it Works
 
 Content processing transformations typically modify documents in place or create new versions with specific changes. Most processing tools follow this pattern:
 
-1. Load your dataset using `DocumentDataset`
+1. Load your dataset using pipeline readers (JsonlReader, ParquetReader)
 2. Configure and apply the appropriate processor
 3. Save the transformed dataset for further processing
 
@@ -43,17 +43,6 @@ Add unique identifiers to documents for tracking and deduplication
 {bdg-secondary}`deduplication`
 :::
 
-:::{grid-item-card} {octicon}`shield-lock;1.5em;sd-mr-1` PII Removal
-:link: pii
-:link-type: doc
-Identify and remove personal identifiable information from text
-+++
-{bdg-secondary}`privacy`
-{bdg-secondary}`regex`
-{bdg-secondary}`masking`
-{bdg-secondary}`compliance`
-:::
-
 :::{grid-item-card} {octicon}`typography;1.5em;sd-mr-1` Text Cleaning
 :link: text-cleaning
 :link-type: doc
@@ -72,11 +61,16 @@ Fix Unicode issues, standardize spacing, and remove URLs
 Here's an example of a typical content processing pipeline:
 
 ```python
+from nemo_curator.core.client import RayClient
 from nemo_curator.pipeline import Pipeline
 from nemo_curator.stages.text.io.reader import JsonlReader
 from nemo_curator.stages.text.io.writer import JsonlWriter
 from nemo_curator.stages.text.modifiers import UnicodeReformatter, UrlRemover, NewlineNormalizer
 from nemo_curator.stages.text.modules import Modify
+
+# Initialize Ray client
+ray_client = RayClient()
+ray_client.start()
 
 # Create a comprehensive cleaning pipeline
 processing_pipeline = Pipeline(
@@ -85,22 +79,22 @@ processing_pipeline = Pipeline(
 )
 
 # Load dataset
-reader = JsonlReader(file_paths="input_data/*.jsonl")
+reader = JsonlReader(file_paths="input_data/")
 processing_pipeline.add_stage(reader)
 
 # Fix Unicode encoding issues
 processing_pipeline.add_stage(
-    Modify(modifier=UnicodeReformatter(), text_field="text")
+    Modify(modifier_fn=UnicodeReformatter(), input_fields="text")
 )
 
 # Standardize newlines
 processing_pipeline.add_stage(
-    Modify(modifier=NewlineNormalizer(), text_field="text")
+    Modify(modifier_fn=NewlineNormalizer(), input_fields="text")
 )
 
 # Remove URLs
 processing_pipeline.add_stage(
-    Modify(modifier=UrlRemover(), text_field="text")
+    Modify(modifier_fn=UrlRemover(), input_fields="text")
 )
 
 # Save the processed dataset
@@ -109,6 +103,9 @@ processing_pipeline.add_stage(writer)
 
 # Execute pipeline
 results = processing_pipeline.run()
+
+# Stop Ray client
+ray_client.stop()
 ```
 
 ## Common Processing Tasks
@@ -119,7 +116,6 @@ results = processing_pipeline.run()
 - Remove or normalize special characters
 
 ### Content Sanitization
-- Remove personally identifiable information (PII)
 - Strip unwanted URLs or links
 - Remove boilerplate text or headers
 
@@ -134,6 +130,5 @@ results = processing_pipeline.run()
 :hidden:
 
 Document IDs <add-id>
-PII Removal <pii>
 Text Cleaning <text-cleaning>
 ```

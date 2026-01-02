@@ -1,7 +1,7 @@
 ---
-description: "Essential concepts for text data curation including loading, processing, and synthetic data generation"
+description: "Essential concepts for text data curation including loading and processing."
 categories: ["concepts-architecture"]
-tags: ["concepts", "text-curation", "data-processing", "synthetic-data", "distributed"]
+tags: ["concepts", "text-curation", "data-processing", "distributed"]
 personas: ["data-scientist-focused", "mle-focused"]
 difficulty: "beginner"
 content_type: "concept"
@@ -15,7 +15,7 @@ This document covers the essential concepts for text data curation in NVIDIA NeM
 
 ## Core Concept Areas
 
-Text curation in NVIDIA NeMo Curator focuses on these key areas:
+Text curation in NeMo Curator focuses on these key areas:
 
 ::::{grid} 1 1 2 2
 :gutter: 1 1 1 2

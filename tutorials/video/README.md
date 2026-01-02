@@ -10,7 +10,7 @@ Hands-on tutorials for curating video data with NeMo Curator. Complete working e
 
 | Tutorial | Description | Files |
 |----------|-------------|-------|
-| **[Getting Started](getting-started/)** | Basic video loading and operations | `video_read_example.py`, `video_split_clip_example.py` |
+| **[Getting Started](getting-started/)** | Basic video loading and operations | `video_split_clip_example.py` |
 
 ## Documentation Links
 
@@ -23,4 +23,4 @@ Hands-on tutorials for curating video data with NeMo Curator. Complete working e
 
 ## Support
 
-**Documentation**: [Main Docs](https://docs.nvidia.com/nemo/curator/latest/) • [API Reference](https://docs.nvidia.com/nemo/curator/latest/apidocs/index.html) • [GitHub Discussions](https://github.com/NVIDIA/NeMo-Curator/discussions)
+**Documentation**: [Main Docs](https://docs.nvidia.com/nemo/curator/latest/) • [API Reference](https://docs.nvidia.com/nemo/curator/latest/apidocs/index.html) • [GitHub Discussions](https://github.com/NVIDIA-NeMo/Curator/discussions)

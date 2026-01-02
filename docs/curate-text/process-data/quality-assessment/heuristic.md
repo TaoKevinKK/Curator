@@ -49,31 +49,31 @@ pipeline = Pipeline(name="heuristic_filtering")
 
 # Load your dataset
 reader = JsonlReader(
-    file_paths="input_data/*.jsonl",
+    file_paths="input_data/",
     fields=["text", "id"]
 )
 pipeline.add_stage(reader)
 
 # Add filter stages
 pipeline.add_stage(ScoreFilter(
-    score_fn=WordCountFilter(min_words=80),
+    filter_obj=WordCountFilter(min_words=80),
     text_field="text",
     score_field="word_count"
 ))
 pipeline.add_stage(ScoreFilter(
-    score_fn=PunctuationFilter(max_num_sentences_without_endmark_ratio=0.85),
+    filter_obj=PunctuationFilter(max_num_sentences_without_endmark_ratio=0.85),
     text_field="text"
 ))
 pipeline.add_stage(ScoreFilter(
-    score_fn=RepeatingTopNGramsFilter(n=2, max_repeating_ngram_ratio=0.2),
+    filter_obj=RepeatingTopNGramsFilter(n=2, max_repeating_ngram_ratio=0.2),
     text_field="text"
 ))
 pipeline.add_stage(ScoreFilter(
-    score_fn=RepeatingTopNGramsFilter(n=3, max_repeating_ngram_ratio=0.18),
+    filter_obj=RepeatingTopNGramsFilter(n=3, max_repeating_ngram_ratio=0.18),
     text_field="text"
 ))
 pipeline.add_stage(ScoreFilter(
-    score_fn=RepeatingTopNGramsFilter(n=4, max_repeating_ngram_ratio=0.16),
+    filter_obj=RepeatingTopNGramsFilter(n=4, max_repeating_ngram_ratio=0.16),
     text_field="text"
 ))
 
@@ -120,7 +120,7 @@ filters_config = [
 # Apply filters in pipeline
 for config in filters_config:
     pipeline.add_stage(ScoreFilter(
-        score_fn=config["filter"],
+        filter_obj=config["filter"],
         text_field="text"
     ))
 ```
@@ -130,7 +130,7 @@ for config in filters_config:
 
 ## Available Filters
 
-NeMo Curator includes over 30 heuristic filters for assessing document quality. Below are the most commonly used filters with their parameters:
+NeMo Curator includes more than 30 heuristic filters for assessing document quality. Below are the most commonly used filters with their parameters:
 
 ### Text Length Filters
 
@@ -215,7 +215,7 @@ filters:
 
 ::::
 
-The configuration file `config/heuristic_filter_en.yaml` contains a general-purpose set of heuristic filters that work well for English text. For non-English texts, you may need to adjust the filter parameters.
+For non-English texts, you may need to adjust the filter parameters based on the specific characteristics of your target language.
 
 ## Best Practices
 
@@ -232,11 +232,11 @@ from nemo_curator.stages.text.filters import WordCountFilter, UrlsFilter, Repeat
 
 pipeline = Pipeline(name="efficient_filtering")
 # Fast filters first
-pipeline.add_stage(ScoreFilter(score_fn=WordCountFilter(min_words=50), text_field="text"))
+pipeline.add_stage(ScoreFilter(filter_obj=WordCountFilter(min_words=50), text_field="text"))
 # Medium complexity filters
-pipeline.add_stage(ScoreFilter(score_fn=UrlsFilter(), text_field="text"))
+pipeline.add_stage(ScoreFilter(filter_obj=UrlsFilter(), text_field="text"))
 # Slow filters last
-pipeline.add_stage(ScoreFilter(score_fn=RepeatingTopNGramsFilter(), text_field="text"))
+pipeline.add_stage(ScoreFilter(filter_obj=RepeatingTopNGramsFilter(), text_field="text"))
 ```
 :::
 
@@ -277,7 +277,7 @@ from nemo_curator.stages.text.modules import ScoreFilter
 from nemo_curator.stages.text.filters import SymbolsToWordsFilter
 
 cn_filter = ScoreFilter(
-    score_fn=SymbolsToWordsFilter(max_symbol_to_word_ratio=0.15, lang="zh"),
+    filter_obj=SymbolsToWordsFilter(max_symbol_to_word_ratio=0.15, lang="zh"),
     text_field="text"
 )
 ```
@@ -299,20 +299,20 @@ quality_pipeline = Pipeline(name="comprehensive_quality")
 
 # Basic text quality
 quality_pipeline.add_stage(ScoreFilter(
-    score_fn=WordCountFilter(min_words=50), text_field="text"
+    filter_obj=WordCountFilter(min_words=50), text_field="text"
 ))
 quality_pipeline.add_stage(ScoreFilter(
-    score_fn=PunctuationFilter(max_num_sentences_without_endmark_ratio=0.85), text_field="text"
+    filter_obj=PunctuationFilter(max_num_sentences_without_endmark_ratio=0.85), text_field="text"
 ))
 
 # Content quality
 quality_pipeline.add_stage(ScoreFilter(
-    score_fn=CommonEnglishWordsFilter(min_num_common_words=2), text_field="text"
+    filter_obj=CommonEnglishWordsFilter(min_num_common_words=2), text_field="text"
 ))
 
 # Repetition detection
 quality_pipeline.add_stage(ScoreFilter(
-    score_fn=RepeatingTopNGramsFilter(n=3, max_repeating_ngram_ratio=0.18), text_field="text"
+    filter_obj=RepeatingTopNGramsFilter(n=3, max_repeating_ngram_ratio=0.18), text_field="text"
 ))
 ```
 :::

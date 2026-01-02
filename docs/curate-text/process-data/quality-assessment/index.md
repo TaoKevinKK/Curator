@@ -14,7 +14,7 @@ modality: "text-only"
 
 Score and remove low-quality content using heuristics and ML classifiers to prepare your data for model training using NeMo Curator's tools and utilities.
 
-Large datasets often contain many documents considered to be "low quality." In this context, "low quality" data simply means data we don't want a downstream model to learn from, and "high quality" data is data that we do want a downstream model to learn from. The metrics that define quality can vary widely.
+Large datasets often contain many documents considered "low quality." In this context, "low quality" means data we do not want downstream models to learn from, and "high quality" is data we do want them to learn from. The metrics that define quality can vary widely.
 
 ## How It Works
 
@@ -45,7 +45,7 @@ pipeline.add_stage(reader)
 
 # Create and apply filter
 filter_stage = ScoreFilter(
-    score_fn=WordCountFilter(min_words=80),
+    filter_obj=WordCountFilter(min_words=80),
     text_field="text",
     score_field="word_count",
 )
@@ -112,38 +112,13 @@ You can combine these modules in pipelines:
 ```python
 from nemo_curator.pipeline import Pipeline
 from nemo_curator.stages.text.modules import Score, Filter
-
+# Assume `word_counter` and `symbol_counter` are callables that return numeric scores
 pipeline = Pipeline(name="multi_stage_filtering")
 pipeline.add_stage(Score(word_counter, score_field="word_count"))
 pipeline.add_stage(Score(symbol_counter, score_field="symbol_ratio"))
 pipeline.add_stage(Filter(lambda x: x >= 100, filter_field="word_count"))
 pipeline.add_stage(Filter(lambda x: x <= 0.3, filter_field="symbol_ratio"))
 ```
-
-:::
-
-:::{tab-item} Performance Optimization
-
-NeMo Curator's filtering framework is optimized for performance through:
-
-```python
-# Filters automatically use vectorized operations when possible
-class OptimizedFilter(DocumentFilter):
-    def score_document(self, text: str) -> float:
-        # Individual document scoring
-        return len(text.split())
-    
-    def keep_document(self, score: float) -> bool:
-        # Individual document filtering decision
-        return score >= 10
-```
-
-The framework provides built-in performance optimizations:
-
-- Vectorized pandas operations for batch processing
-- Efficient memory usage patterns
-- Optimized I/O operations
-- Distributed processing support
 
 :::
 
@@ -186,16 +161,6 @@ GPU-accelerated classification with pre-trained models
 {bdg-secondary}`scalable`
 :::
 
-:::{grid-item-card} {octicon}`terminal;1.5em;sd-mr-1` Custom Filters
-:link: custom
-:link-type: doc
-Implement and combine your own custom filters
-+++
-{bdg-secondary}`custom`
-{bdg-secondary}`flexible`
-{bdg-secondary}`extensible`
-:::
-
 ::::
 
 ## Usage
@@ -221,7 +186,7 @@ pipeline.add_stage(reader)
 
 # Add filtering stage
 filter_stage = ScoreFilter(
-    score_fn=WordCountFilter(min_words=80),
+    filter_obj=WordCountFilter(min_words=80),
     text_field="text",
     score_field="word_count"
 )
@@ -243,7 +208,6 @@ results = pipeline.run()
 Heuristic Filters <heuristic>
 Classifier Filters <classifier>
 Distributed Classification <distributed-classifier>
-Custom Filters <custom>
 ```
 
 ## Best Practices
